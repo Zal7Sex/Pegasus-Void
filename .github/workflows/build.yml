@@ -1,60 +1,350 @@
-name: Build Pegasus Void APK
+name: Build Pegasus Hack APK
 
 on:
   push:
     branches: [ main, master ]
+    paths:
+      - 'lib/**'
+      - 'pubspec.yaml'
+      - 'android/**'
+      - '.github/workflows/**'
   pull_request:
     branches: [ main, master ]
-  workflow_dispatch:
+  workflow_dispatch:  # Manual trigger
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: true
+        default: 'release'
+        type: choice
+        options:
+          - debug
+          - release
+          - profile
+
+env:
+  FLUTTER_VERSION: '3.16.0'
+  JAVA_VERSION: '17'
+  APP_NAME: 'Pegasus Hack'
+  APP_VERSION: '1.0.0'
 
 jobs:
-  build:
+  setup:
     runs-on: ubuntu-latest
+    outputs:
+      cache-key: ${{ steps.flutter-cache.outputs.cache-key }}
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-      
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+    
     - name: Setup Java
       uses: actions/setup-java@v3
       with:
-        distribution: 'zulu'
-        java-version: '17'
-        
+        distribution: 'temurin'
+        java-version: ${{ env.JAVA_VERSION }}
+    
+    - name: Setup Flutter
+      id: flutter-setup
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: ${{ env.FLUTTER_VERSION }}
+        cache: true
+        cache-key: flutter-${{ env.FLUTTER_VERSION }}-${{ github.sha }}
+    
+    - name: Generate Cache Key
+      id: flutter-cache
+      run: |
+        echo "cache-key=flutter-${{ env.FLUTTER_VERSION }}-${{ github.sha }}" >> $GITHUB_OUTPUT
+
+  analyze:
+    needs: setup
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+    
     - name: Setup Flutter
       uses: subosito/flutter-action@v2
       with:
-        flutter-version: '3.24.0'
-        channel: 'stable'
-        
-    - name: Clean Flutter
+        flutter-version: ${{ env.FLUTTER_VERSION }}
+        cache-key: ${{ needs.setup.outputs.cache-key }}
+    
+    - name: Install Dependencies
       run: |
-        flutter clean
-        rm -f pubspec.lock
+        flutter pub get
+        echo "✅ Dependencies installed"
+    
+    - name: Analyze Code
+      run: |
+        echo "🔍 Analyzing code..."
+        flutter analyze --no-pub --no-fatal-infos
+        echo "✅ Code analysis completed"
+    
+    - name: Run Tests
+      run: |
+        echo "🧪 Running tests..."
+        flutter test --no-pub
+        echo "✅ Tests completed"
+
+  build-android:
+    needs: [setup, analyze]
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+    
+    - name: Setup Java
+      uses: actions/setup-java@v3
+      with:
+        distribution: 'temurin'
+        java-version: ${{ env.JAVA_VERSION }}
+    
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: ${{ env.FLUTTER_VERSION }}
+        cache-key: ${{ needs.setup.outputs.cache-key }}
+    
+    - name: Install Dependencies
+      run: |
+        echo "📦 Installing dependencies..."
+        flutter pub get
+        echo "✅ Dependencies installed"
+    
+    - name: Generate Build Config
+      run: |
+        echo "⚙️ Generating build configuration..."
+        # Set build number from run number
+        BUILD_NUMBER=$(( ${{ github.run_number }} + 1000 ))
+        BUILD_DATE=$(date +'%Y%m%d')
+        BUILD_TIME=$(date +'%H%M%S')
         
-    - name: Get dependencies
-      run: flutter pub get
-      
+        echo "BUILD_NUMBER=$BUILD_NUMBER" >> $GITHUB_ENV
+        echo "BUILD_DATE=$BUILD_DATE" >> $GITHUB_ENV
+        echo "BUILD_TIME=$BUILD_TIME" >> $GITHUB_ENV
+        
+        # Create version.json
+        echo "{
+          \"app_name\": \"${{ env.APP_NAME }}\",
+          \"version\": \"${{ env.APP_VERSION }}\",
+          \"build_number\": \"$BUILD_NUMBER\",
+          \"build_date\": \"$BUILD_DATE\",
+          \"commit\": \"${{ github.sha }}\",
+          \"branch\": \"${{ github.ref_name }}\"
+        }" > version.json
+        
+        cat version.json
+    
     - name: Build APK
-      run: flutter build apk --release
-      
-    - name: Rename APK
       run: |
-        mkdir -p output
-        cp build/app/outputs/flutter-apk/app-release.apk output/PegasusVoid.apk
+        echo "🏗️ Building APK..."
         
-    - name: Upload APK
+        # Clean previous builds
+        flutter clean
+        
+        # Build APK
+        flutter build apk --release \
+          --dart-define=APP_NAME="${{ env.APP_NAME }}" \
+          --dart-define=APP_VERSION="${{ env.APP_VERSION }}" \
+          --dart-define=BUILD_NUMBER="$BUILD_NUMBER" \
+          --dart-define=BUILD_DATE="$BUILD_DATE" \
+          --dart-define=GIT_COMMIT="${{ github.sha }}" \
+          --verbose
+        
+        echo "✅ APK build completed"
+    
+    - name: Build App Bundle (Optional)
+      if: github.ref == 'refs/heads/main'
+      run: |
+        echo "📦 Building App Bundle..."
+        flutter build appbundle --release \
+          --dart-define=APP_NAME="${{ env.APP_NAME }}" \
+          --dart-define=APP_VERSION="${{ env.APP_VERSION }}" \
+          --dart-define=BUILD_NUMBER="$BUILD_NUMBER"
+        echo "✅ App Bundle build completed"
+    
+    - name: Generate Build Report
+      run: |
+        echo "📊 Generating build report..."
+        echo "### Build Report - Pegasus Hack" > build_report.md
+        echo "" >> build_report.md
+        echo "**Build Information:**" >> build_report.md
+        echo "- App: ${{ env.APP_NAME }}" >> build_report.md
+        echo "- Version: ${{ env.APP_VERSION }}" >> build_report.md
+        echo "- Build: #$BUILD_NUMBER" >> build_report.md
+        echo "- Date: $(date)" >> build_report.md
+        echo "- Commit: ${{ github.sha }}" >> build_report.md
+        echo "- Branch: ${{ github.ref_name }}" >> build_report.md
+        echo "" >> build_report.md
+        echo "**Build Files:**" >> build_report.md
+        ls -la build/app/outputs/ >> build_report.md
+        
+        # Show APK info
+        if [ -f "build/app/outputs/flutter-apk/app-release.apk" ]; then
+          echo "" >> build_report.md
+          echo "**APK Information:**" >> build_report.md
+          echo "- Size: $(du -h build/app/outputs/flutter-apk/app-release.apk | cut -f1)" >> build_report.md
+          echo "- Location: build/app/outputs/flutter-apk/app-release.apk" >> build_report.md
+        fi
+        
+        cat build_report.md
+    
+    - name: Upload APK Artifact
       uses: actions/upload-artifact@v3
       with:
-        name: PegasusVoid-APK
-        path: output/PegasusVoid.apk
-        
-    - name: Create Release
-      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        name: pegasus-hack-apk-v${{ env.BUILD_NUMBER }}
+        path: |
+          build/app/outputs/flutter-apk/app-release.apk
+          version.json
+          build_report.md
+        retention-days: 30
+    
+    - name: Upload App Bundle Artifact
+      if: github.ref == 'refs/heads/main'
+      uses: actions/upload-artifact@v3
+      with:
+        name: pegasus-hack-bundle-v${{ env.BUILD_NUMBER }}
+        path: build/app/outputs/bundle/release/app-release.aab
+        retention-days: 30
+
+  release:
+    needs: build-android
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+    - name: Download APK Artifact
+      uses: actions/download-artifact@v3
+      with:
+        name: pegasus-hack-apk-v${{ needs.build-android.outputs.BUILD_NUMBER }}
+    
+    - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: v1.0.${{ github.run_number }}
-        name: Pegasus Void v1.0.${{ github.run_number }}
-        files: output/PegasusVoid.apk
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        files: app-release.apk
+        name: "Pegasus Hack ${{ github.ref_name }}"
+        body: |
+          # Pegasus Hack - Remote Control System
+          
+          ## Release ${{ github.ref_name }}
+          
+          ### Build Information
+          - **Version:** ${{ env.APP_VERSION }}
+          - **Build:** #${{ needs.build-android.outputs.BUILD_NUMBER }}
+          - **Commit:** ${{ github.sha }}
+          - **Date:** $(date +'%Y-%m-%d %H:%M:%S')
+          
+          ### Features
+          ✅ Remote Flashlight Control  
+          ✅ Device Lock/Unlock (PIN: 969)  
+          ✅ Wallpaper Change  
+          ✅ Multi-Device Support  
+          ✅ Professional UI with Share Tech Mono font  
+          
+          ### Installation
+          1. Download `app-release.apk`
+          2. Install on Android device
+          3. Login with backend credentials
+          4. Connect to target device
+          
+          ### Backend Configuration
+          Default backend: `http://panglima.zal7sex.serverku.space:2299`
+          
+          ### Security
+          - Default unlock PIN: `969`
+          - Change in settings for production use
+          
+          ### Notes
+          For authorized devices only. Use responsibly.
+          
+          ---
+          *Built with ❤️ by Zal7Sex System*
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+
+  deploy-docs:
+    needs: build-android
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+    
+    - name: Download APK Artifact
+      uses: actions/download-artifact@v3
+      with:
+        name: pegasus-hack-apk-v${{ needs.build-android.outputs.BUILD_NUMBER }}
+    
+    - name: Setup Pages
+      uses: actions/configure-pages@v3
+    
+    - name: Upload to GitHub Pages
+      uses: actions/upload-pages-artifact@v2
+      with:
+        path: .
+    
+    - name: Deploy to GitHub Pages
+      uses: actions/deploy-pages@v2
+
+  notify:
+    needs: [analyze, build-android]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Build Status Notification
+      run: |
+        echo "📱 Pegasus Hack Build Status" >> status.md
+        echo "" >> status.md
+        echo "**Repository:** ${{ github.repository }}" >> status.md
+        echo "**Workflow:** ${{ github.workflow }}" >> status.md
+        echo "**Status:** ${{ job.status }}" >> status.md
+        echo "**Build:** #${{ github.run_number }}" >> status.md
+        echo "**Commit:** ${{ github.sha }}" >> status.md
+        echo "" >> status.md
+        
+        if [ "${{ job.status }}" = "success" ]; then
+          echo "✅ Build completed successfully!" >> status.md
+          echo "APK available in artifacts." >> status.md
+        else
+          echo "❌ Build failed!" >> status.md
+          echo "Check workflow logs for details." >> status.md
+        fi
+        
+        cat status.md
+    
+    - name: Discord Notification
+      if: failure()
+      uses: sarisia/actions-status-discord@v1
+      with:
+        webhook: ${{ secrets.DISCORD_WEBHOOK }}
+        title: "Build Failed - Pegasus Hack"
+        description: |
+          Workflow: ${{ github.workflow }}
+          Commit: ${{ github.sha }}
+          Branch: ${{ github.ref_name }}
+        color: 0xff0000
+        username: "GitHub Actions"
+        avatar_url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+
+  cleanup:
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Cleanup
+      run: |
+        echo "🧹 Cleaning up..."
+        # Clean flutter cache if needed
+        # flutter clean
+        
+        echo "✅ Cleanup completed"
+        echo "Build process finished at: $(date)"
