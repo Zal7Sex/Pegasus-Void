@@ -1,0 +1,38 @@
+name: pegasus_void
+description: Pegasus Void - Device Controller
+version: 1.0.0+1
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.1.0
+  flutter_background_service: ^5.0.10
+  permission_handler: ^11.0.0
+  device_info_plus: ^10.0.0
+  shared_preferences: ^2.2.2
+  connectivity_plus: ^6.0.0
+  vibration: ^2.0.0
+  flutter_local_notifications: ^17.0.0
+  workmanager: ^0.5.2
+  torch_light: ^1.0.0
+  package_info_plus: ^8.0.0
+  path_provider: ^2.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/data.txt
+    - assets/fonts/
+  fonts:
+    - family: ShareTechMono
+      fonts:
+        - asset: assets/fonts/ShareTechMono-Regular.ttf
