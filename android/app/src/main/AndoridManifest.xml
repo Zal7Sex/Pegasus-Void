@@ -30,6 +30,11 @@
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">
         
+        <!-- IMPORTANT: Ini yang paling penting buat v2 embedding -->
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2"/>
+        
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -65,9 +70,5 @@
                 <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
             </intent-filter>
         </receiver>
-
-        <meta-data
-            android:name="flutterEmbedding"
-            android:value="2"/>
     </application>
 </manifest>
