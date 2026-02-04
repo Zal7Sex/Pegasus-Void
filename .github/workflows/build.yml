@@ -32,7 +32,7 @@ jobs:
         echo "sdk.dir=$ANDROID_HOME" > android/local.properties
         echo "flutter.sdk=$FLUTTER_ROOT" >> android/local.properties
         
-    - name: Remove old Java files and ensure Kotlin structure
+    - name: Remove old files and setup structure
       run: |
         rm -rf android/app/src/main/java
         mkdir -p android/app/src/main/kotlin/com/pegasus/void
@@ -45,8 +45,8 @@ jobs:
     - name: Get dependencies
       run: flutter pub get
       
-    - name: Build APK
-      run: flutter build apk --release
+    - name: Build APK (bypass deprecation check)
+      run: flutter build apk --release --no-tree-shake-icons --target-platform android-arm64
       
     - name: Rename APK
       run: |
